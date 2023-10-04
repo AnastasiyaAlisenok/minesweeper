@@ -1,0 +1,447 @@
+import { addColorNumbers, reloadGame} from "../index";
+import sound from '../assets/sounds/click.mp3';
+import winSound from '../assets/sounds/win.mp3';
+import loseSound from '../assets/sounds/lose.mp3';
+import flagSound from '../assets/sounds/flag.mp3'
+import { saveResults } from "./savingGame";
+import volum from '../assets/image/volum.png';
+import novolum from '../assets/image/novolum.png';
+
+let width;
+let height;
+let fieldSize;
+let isSound = true;
+export let seconds = localStorage.getItem('seconds') ? localStorage.getItem('seconds') : 0;
+
+const body = document.querySelector('body');
+export let arrayResults = localStorage.getItem('arrResults') ? JSON.parse(localStorage.getItem('arrResults')) : [];
+
+// Начало игры
+
+export function startGame() {
+  const overlay = document.querySelector('.overlay');
+  const levelLight = document.querySelector('.light');
+  const levelMiddle = document.querySelector('.middle');
+  const levelHard = document.querySelector('.hard');
+  const countMines = document.querySelector('.count');
+  const counterMines = document.querySelector('.count-bombs')
+  const time = document.querySelector('.timer');
+  let countClicks = localStorage.getItem('clicks') ? localStorage.getItem('clicks') : 0;
+
+  let countCells = localStorage.getItem('countCells') ? localStorage.getItem('countCells') : width * height;
+  const field = document.querySelector('.field');
+  const score = document.querySelector('.score');
+  let cells = [...field.children];
+  const button = document.querySelector('.button-game');
+  let bombs = getBombArray();
+  let countFlags = document.querySelector('.count-flags');
+  countMines.value = localStorage.getItem('bomb') ? localStorage.getItem('bomb') : '10';
+  let fieldWidth;
+
+  button.addEventListener('click', () => {
+    reloadGame();
+    localStorage.removeItem('bombsArr');
+    bombs = getBombArray();
+    localStorage.removeItem('clicks');
+    countClicks =  0;
+    countCells = width * height;
+    localStorage.removeItem('countCells');
+    localStorage.removeItem('seconds');
+    seconds = 0;
+    countMines.value = localStorage.getItem('bomb') ? localStorage.getItem('bomb') : '10';
+    countFlags.textContent = '0';
+    counterMines.textContent = countMines.value
+  });
+
+  countMines.addEventListener('change', () => {
+      reloadGame();
+      localStorage.removeItem('clicks');
+      countClicks = 0;
+      let bomb;
+      if (isCorrectValue()) {
+        localStorage.setItem('bomb', countMines.value);
+        bomb = localStorage.getItem('bomb');
+      } else {
+        countMines.value = 10;
+        localStorage.setItem('bomb', countMines.value);
+        bomb = localStorage.getItem('bomb');
+      }
+      localStorage.removeItem('bombsArr');
+      bombs = [...Array(fieldSize).keys()].sort(() => Math.random() -0.5).slice(0, bomb);
+      counterMines.textContent = countMines.value;
+      countFlags.textContent = '0';
+  })
+
+  const levels = document.querySelectorAll('.level-buttons button');
+  levels.forEach((item) => item.addEventListener('click', () => {
+    reloadGame();
+    getWidth();
+    localStorage.removeItem('bombsArr');
+    bombs = getBombArray();
+    window.clearInterval(window.timerId);
+    localStorage.removeItem('seconds');
+    seconds = 0;
+    localStorage.removeItem('clicks');
+    countClicks = 0;
+    counterMines.textContent = countMines.value
+    countFlags.textContent = '0';
+    localStorage.removeItem('countCells');
+    countCells = width * height;
+  } ))
+
+  window.addEventListener('resize', () => {
+    localStorage.removeItem('bombsArr');
+    bombs = getBombArray();
+    window.clearInterval(window.timerId);
+    localStorage.removeItem('seconds');
+    seconds = 0;
+    localStorage.removeItem('clicks');
+    countClicks = 0;
+    counterMines.textContent = countMines.value
+    countFlags.textContent = '0';
+    localStorage.removeItem('countCells');
+    countCells = width * height;
+  })
+
+  window.addEventListener('beforeunload', () => {
+    localStorage.setItem('bombsArr', bombs);
+  })
+  if (localStorage.getItem('bombsArr')) {
+    bombs = localStorage.getItem('bombsArr').split(',');
+    bombs = bombs.map((item) => Number(item));
+  }
+
+  field.addEventListener('click', (event) => {
+    if (event.target.tagName !== 'BUTTON') {
+      return
+    }
+    cells = [...field.children];
+    countClicks++;
+    const index = cells.indexOf(event.target);
+
+    if(countClicks === 1 || localStorage.getItem('seconds') > 0) {
+      seconds = localStorage.getItem('seconds') ? localStorage.getItem('seconds') : 1;
+      window.timerId = window.setInterval(timer, 1000);
+     if (levelLight.classList.contains('active')) {
+      width = 10;
+      height = 10;
+    } else if (levelMiddle.classList.contains('active')) {
+      width = 15;
+      height = 15;
+    } else if (levelHard.classList.contains('active')) {
+      width = 25;
+      height = 25;
+    }
+    countCells = localStorage.getItem('countCells') ? localStorage.getItem('countCells') : width * height;
+    }
+    const column = index % width;
+    const row = Math.floor(index / width);
+
+   addClickSound(sound)
+    // Проверяем первый клик и мина ли это
+    if (countClicks === 1 && isBomb(row, column) && ! localStorage.getItem('bombsArr')) {
+        let random;
+        if (bombs.length < (fieldSize)) {
+          random = Math.floor(Math.random() * (fieldSize))
+          while (bombs.includes(random)) {
+              random = Math.floor(Math.random() * (fieldSize));
+          }
+          bombs.push(random);
+        }
+    let ind = bombs.indexOf(index);
+    bombs.splice(ind, 1);
+    cells[index].className = 'open-ceill';
+    cells[index].style.width = `calc(${fieldWidth}px / ${width})`;
+    cells[index].style.height = `calc(${fieldWidth}px / ${width})`;
+    if (levelHard.classList.contains('active')) {
+      cells[index].style.fontSize = '0.7rem';
+    }
+    let number = getMinesCount(row, column);
+    cells[index].textContent = number;
+    addColorNumbers(number, cells[index]);
+    score.textContent = Number(score.textContent) + 1;
+    countCells--;
+    if (countCells <= bombs.length) {
+      getWin();
+    }
+    localStorage.setItem('countCells', countCells);
+    } else {
+      openCell(row, column);
+      score.textContent = Number(score.textContent) + 1;
+    }
+ });
+
+  field.addEventListener('contextmenu', (event) => {
+    cells = [...field.children];
+    if (event.target.tagName !== 'BUTTON') {
+      return
+    }
+    event.preventDefault();
+    const index = cells.indexOf(event.target);
+    cells[index].classList.toggle('flag');
+    cells[index].style.width = `calc(${fieldWidth}px / ${width})`;
+    cells[index].style.height = `calc(${fieldWidth}px / ${width})`;
+    if (cells[index].classList.contains('flag')) {
+      countFlags.textContent = Number(countFlags.textContent) + 1;
+      if (Number(counterMines.textContent) === 0) {
+        return 
+      } else {
+        counterMines.textContent =  Number(counterMines.textContent) - 1
+      }
+    } else {
+      if (Number(countFlags.textContent) > countMines.value) {
+        countFlags.textContent = Number(countFlags.textContent) - 1;
+      } else {
+        countFlags.textContent = Number(countFlags.textContent) - 1;
+        counterMines.textContent =  Number(counterMines.textContent) + 1
+      }
+    }
+    addClickSound(flagSound);
+    cells[index].disabled = cells[index].classList.contains('flag') ?
+      true : false;
+  })
+
+
+// Открытие ячейки
+
+  function openCell(row, column) {
+    cells = [...field.children];
+    if (!isRow(row, column)) return
+    const index = row * width + column;
+    const cell = cells[index];
+    if (cell.disabled === true) {
+      return
+    }
+    cell.disabled = true;
+
+    if (isBomb(row, column)) {
+      getLose(row, column);
+      return
+    }
+    countCells--;
+    localStorage.setItem('countCells', countCells);
+    if (countCells <= bombs.length) {
+      cell.className = 'open-ceill';
+      cell.style.width = `calc(${fieldWidth}px / ${width})`;
+      cell.style.height = `calc(${fieldWidth}px / ${width})`;
+      if (levelHard.classList.contains('active')) {
+        cell.style.fontSize = '0.8rem';
+      }
+      getWin();
+      return
+    }
+    let number = getMinesCount(row, column);
+    if (number !== 0 && (!cell.classList.contains('flag'))) {
+        cell.textContent = number;
+        cell.className = 'open-ceill';
+        cell.style.width = `calc(${fieldWidth}px / ${width})`;
+        cell.style.height = `calc(${fieldWidth}px / ${width})`;
+        if (levelHard.classList.contains('active')) {
+          cell.style.fontSize = '0.8rem';
+        }
+        addColorNumbers(number, cell)
+        return
+      }
+
+    cell.textContent = '';
+    cell.className = 'open-ceill';
+    cell.style.width = `calc(${fieldWidth}px / ${width})`;
+    cell.style.height = `calc(${fieldWidth}px / ${width})`;
+    for (let i = -1; i <= 1; i += 1) {
+      for (let j = -1; j <= 1; j += 1) {
+        openCell(row + j, column + i);
+      }
+    }
+  }
+
+function isBomb(row, column) {
+  if (!isRow(row, column)) return false;
+  const index = row * width + column;
+
+  return bombs.includes(index);
+}
+
+// Подсчет количества мин вокруг ячейки
+
+function getMinesCount(row, column) {
+let count = 0;
+
+for (let i = -1; i <= 1; i += 1) {
+  for (let j = -1; j <= 1; j += 1) {
+    if (isBomb(row + j, column + i)) {
+      count++;
+    }
+  }
+}
+return count;
+}
+
+// Проверка существования ряда и колонки
+
+function isRow(row, column) {
+  return row >=0 && row < height && column >=0 && column < width;
+}
+
+//Действия при выйгрыше
+
+function getWin() {
+  cells = [...field.children];
+  const modal = document.querySelector('.modal');
+  const score = document.querySelector('.score');
+
+  window.clearInterval(window.timerId);
+  addClickSound(winSound)
+  for (let i = 0; i < cells.length; i += 1) {
+    if (bombs.includes(i)) {
+      cells[i].className = 'bomb';
+      cells[i].style.width = `calc(${fieldWidth}px / ${width})`;
+      cells[i].style.height = `calc(${fieldWidth}px / ${width})`;
+    }
+  }
+  modal.style.backgroundColor = '#0bd659';
+  modal.classList.add('open');
+  overlay.classList.add('show');
+  modal.classList.remove('fadeOut');
+  modal.classList.add('fadeIn');
+  body.classList.add('scroll');
+  modal.textContent = countClicks === 1 ?
+  `Hooray! You found all mines in ${seconds} seconds and ${Number(score.textContent)} moves!`
+  : `Hooray! You found all mines in ${seconds} seconds and ${Number(score.textContent) + 1} moves!`;
+  cells.forEach((item) => item.disabled = true);
+  saveResults();
+}
+
+//Дейсвия при проигрыше
+
+function getLose(row, column) {
+  cells = [...field.children];
+  const index = row * width + column;
+  const cell = cells[index];
+  cell.className = 'bomb';
+  cell.style.width = `calc(${fieldWidth}px / ${width})`;
+  cell.style.height = `calc(${fieldWidth}px / ${width})`;
+  for (let i = 0; i < cells.length; i += 1) {
+    if (bombs.includes(i)) {
+      cells[i].className = 'bomb';
+      cells[i].style.width = `calc(${fieldWidth}px / ${width})`;
+      cells[i].style.height = `calc(${fieldWidth}px / ${width})`;
+    }
+  }
+      const modal = document.querySelector('.modal');
+      window.clearInterval(window.timerId);
+      addClickSound(loseSound)
+      modal.style.backgroundColor = 'rgb(156, 7, 7)';
+      modal.classList.add('open');
+      overlay.classList.add('show');
+      modal.classList.remove('fadeOut');
+      modal.classList.add('fadeIn');
+      body.classList.add('scroll');
+      modal.textContent = 'Game over. Try again!';
+      cells.forEach((item) => item.disabled = true);
+}
+overlay.addEventListener('click', closeModal);
+
+const volumeBtn = document.querySelector('.volume-btn');
+const volumeIcon = document.querySelector('.volume-icon');
+
+volumeBtn.addEventListener('click', () => {
+  const audio = new Audio();
+  if (isSound) {
+   isSound = false;
+   volumeIcon.src = novolum;
+   audio.pause()
+  } else {
+    isSound = true;
+    volumeIcon.src = volum;
+  }
+})
+};
+
+function timer() {
+  const time = document.querySelector('.timer');
+  if(seconds > 99) {
+    return time.textContent = `${String(seconds++)}`;
+  }
+  return time.textContent = `${String(seconds++).padStart(3, '0')}`;
+}
+
+function closeModal(e) {
+  const modal = document.querySelector('.modal');
+  const overlay = document.querySelector('.overlay');
+  if(modal.classList.contains('open')) {
+      const modalBorders = e.composedPath().includes(modal);
+      if(! modalBorders) {
+         modal.classList.remove('open');
+         modal.classList.remove('fadeIn');
+         modal.classList.add('fadeOut');
+         overlay.classList.remove('show');
+         body.classList.remove('scroll');
+      }
+ }
+}
+
+function addClickSound(sound) {
+  let isPlay = false;
+  const audio = new Audio(sound);
+  if (isSound) {
+    if (!isPlay) {
+      audio.play();
+    } else {
+      audio.pause();
+    }
+    isPlay = !isPlay;
+  } else {
+    audio.pause();
+  }
+}
+
+export function getBombArray() {
+  const levelLight = document.querySelector('.light');
+  const levelMiddle = document.querySelector('.middle');
+  const levelHard = document.querySelector('.hard');
+  if (levelLight.classList.contains('active')) {
+    width = 10;
+    height = 10;
+  } if (levelMiddle.classList.contains('active')) {
+    width = 15;
+    height = 15;
+  } if (levelHard.classList.contains('active')) {
+    width = 25;
+    height = 25;
+  }
+
+  fieldSize = width*height;
+  let bomb = localStorage.getItem('bomb') ? localStorage.getItem('bomb') : '10';
+  let bombs = [...Array(fieldSize).keys()].sort(() => Math.random() -0.5).slice(0, bomb);
+  return bombs;
+}
+
+function isCorrectValue() {
+  const countMines = document.querySelector('.count');
+  return countMines.value >=10 && countMines.value <= 99;
+}
+
+window.addEventListener('beforeunload', () => {
+  localStorage.setItem('arrResults', JSON.stringify(arrayResults));
+})
+
+function getWidth() {
+  const div = document.querySelector('.minesweeper');
+  let divWidth;
+  if (window.screen.width >= 1200) {
+    divWidth = 0.28 * window.screen.width;
+  } else if (window.screen.width < 1200 && window.screen.width >= 1000) {
+    divWidth = 0.55 * window.screen.width;
+  } else if (window.screen.width < 1000 && window.screen.width >= 800) {
+    divWidth = 0.64 * window.screen.width;
+  } else if (window.screen.width < 800 && window.screen.width >= 600) {
+    divWidth = 0.92 * window.screen.width;
+  } else if (window.screen.width < 600) {
+    divWidth = 0.9 * window.screen.width;
+  }
+  div.style.width = `${divWidth}px`;
+  let fieldWidth = window.screen.width >= 1200 ? divWidth * 0.89 : divWidth * 0.90;
+  return fieldWidth;
+}
+
+window.addEventListener('resize', getWidth);
